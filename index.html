@@ -43,18 +43,9 @@
     gap: 24px;
     overflow: auto;
   }
-  .brand { display: flex; align-items: center; gap: 11px; }
-  .brand svg { width: 34px; height: 34px; flex: none; }
-  .brand .mark-text { display: flex; flex-direction: column; line-height: 1; }
-  .wordmark {
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: 19px;
-    letter-spacing: -0.04em;
-    color: var(--offwhite);
-  }
+  .brand { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .brand .logo { width: 100%; max-width: 250px; height: auto; display: block; }
   .eyebrow {
-    margin-top: 5px;
     font-size: 10px;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -192,16 +183,8 @@
 <body>
 <aside>
   <div class="brand">
-    <!-- isometric cube mark -->
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <polygon points="50,6 91,29 50,52 9,29" fill="#9B6BFF"/>
-      <polygon points="9,29 50,52 50,94 9,71" fill="#5B27C4"/>
-      <polygon points="91,29 50,52 50,94 91,71" fill="#3A1580"/>
-    </svg>
-    <div class="mark-text">
-      <span class="wordmark">HEXALOG</span>
-      <span class="eyebrow">frame studio</span>
-    </div>
+    <img class="logo" src="logo.png" alt="hexalog — simplify · supply · succeed" />
+    <span class="eyebrow">frame studio</span>
   </div>
 
   <div class="group">
@@ -434,7 +417,7 @@
     }, 'image/png');
   });
 
-  // first paint (and re-paint once the brand font loads so the wordmark is correct)
+  // first paint (and re-paint once fonts/frames have loaded)
   render();
   if (document.fonts?.ready) document.fonts.ready.then(render);
 })();
