@@ -109,6 +109,22 @@
   }
   .filebtn.pulse { animation: pulseGlow 2.4s ease-in-out infinite; }
 
+  /* remove-bg button — secondary action, only meaningful once a photo is loaded */
+  .bgrm {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; height: 38px; margin-top: 8px;
+    background: var(--panel-2); color: var(--offwhite);
+    border: 1px solid var(--line); border-radius: 10px;
+    font-family: var(--body); font-size: 12.5px; font-weight: 500;
+    cursor: pointer; transition: border-color .15s, color .15s, background .15s;
+  }
+  .bgrm:hover:not(:disabled) { border-color: var(--violet); color: #fff; }
+  .bgrm:disabled { opacity: 0.55; cursor: not-allowed; }
+  .bgrm svg { width: 14px; height: 14px; color: var(--lav); }
+  .bgrm.working { color: var(--yellow); border-color: var(--yellow); }
+  .bgrm.working svg { color: var(--yellow); animation: bgrmSpin 1.2s linear infinite; }
+  @keyframes bgrmSpin { to { transform: rotate(360deg); } }
+
   /* frame style chips — live thumbnails of the real overlays */
   .styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .chip {
@@ -288,6 +304,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4 7 9M12 4l5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
       <span id="filebtnLabel">choose image</span>
     </label>
+    <button type="button" class="bgrm" id="bgrm" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      <span id="bgrmLabel">remove background</span>
+    </button>
   </div>
   <input id="file" type="file" accept="image/*" />
   <input id="selfie" type="file" accept="image/*" capture="user" />
@@ -296,10 +316,8 @@
   <div class="group">
     <label>frame style</label>
     <div class="styles" id="styles">
-      <div class="chip active" data-style="ring-badge"><img src="frames/ring-badge.png" alt=""><span class="tip">badge</span></div>
-      <div class="chip" data-style="ring-soft"><img src="frames/ring-soft.png" alt=""><span class="tip">soft</span></div>
+      <div class="chip active" data-style="ring-soft"><img src="frames/ring-soft.png" alt=""><span class="tip">soft</span></div>
       <div class="chip" data-style="tag-violet"><img src="frames/tag-violet.png" alt=""><span class="tip">tag</span></div>
-      <div class="chip" data-style="tag-yellow"><img src="frames/tag-yellow.png" alt=""><span class="tip">tag · y</span></div>
       <div class="chip" data-style="tag-white"><img src="frames/tag-white.png" alt=""><span class="tip">tag · w</span></div>
     </div>
   </div>
@@ -342,10 +360,8 @@
   <p class="mhint">drag to reposition · pinch to zoom</p>
   <p class="mlabel">choose a frame</p>
   <div class="mstyles styles" id="mstyles">
-    <div class="mchip active" data-style="ring-badge"><img src="frames/ring-badge.png" alt="badge frame"></div>
-    <div class="mchip" data-style="ring-soft"><img src="frames/ring-soft.png" alt="soft frame"></div>
+    <div class="mchip active" data-style="ring-soft"><img src="frames/ring-soft.png" alt="soft frame"></div>
     <div class="mchip" data-style="tag-violet"><img src="frames/tag-violet.png" alt="tag frame"></div>
-    <div class="mchip" data-style="tag-yellow"><img src="frames/tag-yellow.png" alt="yellow tag frame"></div>
     <div class="mchip" data-style="tag-white"><img src="frames/tag-white.png" alt="white tag frame"></div>
   </div>
   <button class="mdownload" id="mdownload">download png</button>
@@ -374,10 +390,8 @@
 
   // real hexalog overlays (1000×1000, transparent center)
   const FRAMES = {
-    'ring-badge':  'frames/ring-badge.png',
     'ring-soft':   'frames/ring-soft.png',
     'tag-violet':  'frames/tag-violet.png',
-    'tag-yellow':  'frames/tag-yellow.png',
     'tag-white':   'frames/tag-white.png',
   };
   const frames = {};
@@ -402,7 +416,7 @@
   const downloadBtn = document.getElementById('download');
   const stage = document.getElementById('stage');
 
-  let activeStyle = 'ring-badge';
+  let activeStyle = 'ring-soft';
   let photo = null;
   let state = { scale: 1, ox: 0, oy: 0 };
 
@@ -474,12 +488,30 @@
       downloadBtn.disabled = false;
       document.getElementById('filebtn').classList.remove('pulse');
       document.getElementById('filebtnLabel').textContent = 'change image';
+      document.getElementById('bgrm').disabled = false;
+      document.getElementById('bgrmLabel').textContent = 'remove background';
+      document.getElementById('bgrm').classList.remove('working');
       document.body.classList.remove('no-photo');
       document.body.classList.add('has-photo');   // step 1 → step 2 on mobile
       render();
     };
     img.src = URL.createObjectURL(file);
   }
+
+  // tiny bridge so the bg-removal module script can swap the photo in place
+  window.__hexalog = {
+    hasPhoto: () => !!photo,
+    getPhotoBlobURL: () => photo?.src || null,
+    setPhotoFromBlob(blob) {
+      const img = new Image();
+      img.onload = () => {
+        photo = img;
+        // re-fit but keep current zoom/pan so the user doesn't lose framing
+        render();
+      };
+      img.src = URL.createObjectURL(blob);
+    },
+  };
 
   fileInput.addEventListener('change', (e) => loadImageFile(e.target.files?.[0]));
   document.getElementById('selfie').addEventListener('change', (e) => loadImageFile(e.target.files?.[0]));
@@ -600,6 +632,41 @@
   render();
   if (document.fonts?.ready) document.fonts.ready.then(render);
 })();
+</script>
+
+<script type="module">
+  const btn = document.getElementById('bgrm');
+  const label = document.getElementById('bgrmLabel');
+  let removeBackground = null;
+  let loadingLib = null;
+  const LIB_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm';
+
+  function loadLib() {
+    if (loadingLib) return loadingLib;
+    loadingLib = import(LIB_URL).then(m => { removeBackground = m.removeBackground || m.default; });
+    return loadingLib;
+  }
+
+  btn.addEventListener('click', async () => {
+    if (!window.__hexalog?.hasPhoto()) return;
+    btn.disabled = true;
+    btn.classList.add('working');
+    label.textContent = 'loading model…';
+    try {
+      await loadLib();
+      const src = window.__hexalog.getPhotoBlobURL();
+      label.textContent = 'removing background…';
+      const blob = await removeBackground(src, { output: { format: 'image/png', quality: 0.95 } });
+      window.__hexalog.setPhotoFromBlob(blob);
+      label.textContent = 'background removed';
+      setTimeout(() => { label.textContent = 'remove background'; btn.disabled = false; btn.classList.remove('working'); }, 1600);
+    } catch (e) {
+      console.error('bg-remove failed:', e);
+      label.textContent = 'failed — try again';
+      btn.classList.remove('working');
+      setTimeout(() => { label.textContent = 'remove background'; btn.disabled = false; }, 2000);
+    }
+  });
 </script>
 </body>
 </html>
