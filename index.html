@@ -134,6 +134,8 @@
     cursor: pointer; transition: border-color .15s, box-shadow .15s;
   }
   .chip img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  /* layered chip thumbnail: backdrop + accent stacked */
+  .chip img.acc { position: absolute; inset: 0; }
   .chip .tip {
     position: absolute; bottom: 0; left: 0; right: 0;
     font-size: 9px; letter-spacing: .1em; text-transform: uppercase; text-align: center;
@@ -141,6 +143,45 @@
   }
   .chip:hover { border-color: var(--violet); }
   .chip.active { border-color: var(--violet); box-shadow: inset 0 0 0 1px var(--violet); }
+
+  /* locked chip — requires background removal */
+  .chip.locked, .mchip.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(.4);
+  }
+  .chip.locked:hover, .mchip.locked:hover {
+    border-color: var(--line);
+    box-shadow: none;
+    transform: none;
+    outline: none;
+  }
+
+  /* floating tooltip shown when hovering a locked chip */
+  .lock-tip {
+    position: fixed;
+    transform: translate(-50%, -100%);
+    background: #2b1a5a;
+    color: var(--offwhite);
+    font: 500 11px/1.3 var(--body);
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 24px -8px rgba(0,0,0,.55);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .14s ease;
+    z-index: 1000;
+    margin-top: -8px;
+  }
+  .lock-tip.show { opacity: 1; }
+  .lock-tip::after {
+    content: ''; position: absolute; left: 50%; top: 100%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #2b1a5a;
+  }
   .chip.active .tip { color: var(--lav); }
 
   /* zoom */
@@ -244,11 +285,13 @@
     .mstyles { display: flex; gap: 14px; justify-content: center; align-items: center; overflow-x: auto; padding: 10px 4px; scrollbar-width: none; }
     .mstyles::-webkit-scrollbar { display: none; }
     .mchip {
+      position: relative;
       width: 54px; height: 54px; flex: 0 0 auto; border-radius: 50%;
       overflow: hidden; background: #221356; box-shadow: 0 0 0 2px var(--violet) inset;
       cursor: pointer; opacity: .8; transition: transform .14s, box-shadow .14s, opacity .14s, outline .14s;
     }
     .mchip img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    .mchip img.acc { position: absolute; inset: 0; }
     .mchip.active {
       opacity: 1; transform: scale(1.1);
       outline: 2.5px solid #fff; outline-offset: 3px;
@@ -319,6 +362,9 @@
       <div class="chip active" data-style="ring-soft"><img src="frames/ring-soft.png" alt=""><span class="tip">soft</span></div>
       <div class="chip" data-style="tag-violet"><img src="frames/tag-violet.png" alt=""><span class="tip">tag</span></div>
       <div class="chip" data-style="tag-white"><img src="frames/tag-white.png" alt=""><span class="tip">tag · w</span></div>
+      <div class="chip" data-style="violet-cube"><img src="frames/violet-back.png" alt=""><img class="acc" src="frames/violet-cube-acc.png" alt=""><span class="tip">violet</span></div>
+      <div class="chip" data-style="violet-tag"><img src="frames/violet-back-flat.png" alt=""><img class="acc" src="frames/violet-tag-acc.png" alt=""><span class="tip">v · tag</span></div>
+      <div class="chip" data-style="violet-tag-soft"><img src="frames/violet-back-flat.png" alt=""><img class="acc" src="frames/violet-tag-soft-acc.png" alt=""><span class="tip">v · soft</span></div>
     </div>
   </div>
 
@@ -363,6 +409,9 @@
     <div class="mchip active" data-style="ring-soft"><img src="frames/ring-soft.png" alt="soft frame"></div>
     <div class="mchip" data-style="tag-violet"><img src="frames/tag-violet.png" alt="tag frame"></div>
     <div class="mchip" data-style="tag-white"><img src="frames/tag-white.png" alt="white tag frame"></div>
+    <div class="mchip" data-style="violet-cube"><img src="frames/violet-back.png" alt="violet cube frame"><img class="acc" src="frames/violet-cube-acc.png" alt=""></div>
+    <div class="mchip" data-style="violet-tag"><img src="frames/violet-back-flat.png" alt="violet tag frame"><img class="acc" src="frames/violet-tag-acc.png" alt=""></div>
+    <div class="mchip" data-style="violet-tag-soft"><img src="frames/violet-back-flat.png" alt="violet soft tag frame"><img class="acc" src="frames/violet-tag-soft-acc.png" alt=""></div>
   </div>
   <button class="mdownload" id="mdownload">download png</button>
   <div class="mtools">
@@ -377,6 +426,8 @@
   </div>
 </div>
 
+<div class="lock-tip" id="lockTip">remove background first</div>
+
 <script>
 (() => {
   const SIZE = 1000, CX = 500, CY = 500;
@@ -386,20 +437,36 @@
   // tag frames have no ring → the photo IS the circle, so it fills to the edge.
   const RING_R = 458;
   const FULL_R = 500;
-  const photoR = () => activeStyle.startsWith('tag') ? FULL_R : RING_R;
+  // styles where the photo fills the whole circle (no violet halo around it)
+  const FULL_RADIUS_STYLES = new Set(['tag-violet', 'tag-white', 'violet-tag', 'violet-tag-soft']);
+  const photoR = () => FULL_RADIUS_STYLES.has(activeStyle) ? FULL_R : RING_R;
 
-  // real hexalog overlays (1000×1000, transparent center)
-  const FRAMES = {
-    'ring-soft':   'frames/ring-soft.png',
-    'tag-violet':  'frames/tag-violet.png',
-    'tag-white':   'frames/tag-white.png',
+  // each style = { back?: bgImg under photo, front?: accent over photo }
+  // ring/tag styles use just a `front` overlay with a transparent center.
+  // violet-* styles use a solid violet backdrop + a transparent foreground accent.
+  const FRAME_DEFS = {
+    'ring-soft':       { front: 'frames/ring-soft.png' },
+    'tag-violet':      { front: 'frames/tag-violet.png' },
+    'tag-white':       { front: 'frames/tag-white.png' },
+    'violet-cube':     { back: 'frames/violet-back.png', front: 'frames/violet-cube-acc.png' },
+    'violet-tag':      { back: 'frames/violet-back-flat.png', front: 'frames/violet-tag-acc.png' },
+    'violet-tag-soft': { back: 'frames/violet-back-flat.png', front: 'frames/violet-tag-soft-acc.png' },
   };
-  const frames = {};
-  for (const [k, src] of Object.entries(FRAMES)) {
+  const imgCache = {};
+  const loadFrameImg = (src) => {
+    if (imgCache[src]) return imgCache[src];
     const img = new Image();
     img.onload = render;
     img.src = src;
-    frames[k] = img;
+    imgCache[src] = img;
+    return img;
+  };
+  const frames = {};
+  for (const [k, def] of Object.entries(FRAME_DEFS)) {
+    frames[k] = {
+      back:  def.back  ? loadFrameImg(def.back)  : null,
+      front: def.front ? loadFrameImg(def.front) : null,
+    };
   }
 
   // default profile-picture placeholder image (shown until a photo is chosen)
@@ -418,7 +485,31 @@
 
   let activeStyle = 'ring-soft';
   let photo = null;
+  let bgRemoved = false;     // violet-* chips unlock once this flips true
   let state = { scale: 1, ox: 0, oy: 0 };
+
+  // styles that require background removal — kept locked until the user runs the bg remover
+  const LOCKED_STYLES = new Set(['violet-cube', 'violet-tag', 'violet-tag-soft']);
+  const lockTip = document.getElementById('lockTip');
+  function updateChipLocks() {
+    document.querySelectorAll('.chip, .mchip').forEach(c => {
+      if (LOCKED_STYLES.has(c.dataset.style)) {
+        c.classList.toggle('locked', !bgRemoved);
+      }
+    });
+  }
+  function showLockTip(chip) {
+    const r = chip.getBoundingClientRect();
+    lockTip.style.left = (r.left + r.width / 2) + 'px';
+    lockTip.style.top  = r.top + 'px';
+    lockTip.classList.add('show');
+  }
+  function hideLockTip() { lockTip.classList.remove('show'); }
+  document.querySelectorAll('.chip, .mchip').forEach(c => {
+    c.addEventListener('mouseenter', () => { if (c.classList.contains('locked')) showLockTip(c); });
+    c.addEventListener('mouseleave', hideLockTip);
+  });
+  updateChipLocks();
 
   function fitScale(img) {
     const r = photoR();
@@ -448,6 +539,9 @@
 
   function render() {
     ctx.clearRect(0, 0, SIZE, SIZE);
+    const f = frames[activeStyle];
+    // backdrop (e.g. violet circle) renders first so the photo sits on top of it.
+    if (f?.back && f.back.complete) ctx.drawImage(f.back, 0, 0, SIZE, SIZE);
     if (photo) {
       ctx.save();
       ctx.beginPath();
@@ -457,11 +551,10 @@
       const w = photo.width * s, h = photo.height * s;
       ctx.drawImage(photo, CX - w / 2 + state.ox, CY - h / 2 + state.oy, w, h);
       ctx.restore();
-    } else if (!isMobile()) {
-      drawPlaceholder();   // desktop empty state keeps the avatar; mobile shows a clean ring
+    } else if (!isMobile() && !f?.back) {
+      drawPlaceholder();   // desktop empty state: avatar only when there's no backdrop to show
     }
-    const f = frames[activeStyle];
-    if (f && f.complete) ctx.drawImage(f, 0, 0, SIZE, SIZE);
+    if (f?.front && f.front.complete) ctx.drawImage(f.front, 0, 0, SIZE, SIZE);
   }
 
   // ---- controls ----
@@ -475,6 +568,12 @@
   document.querySelectorAll('#styles, #mstyles').forEach(group =>
     group.addEventListener('click', (e) => {
       const chip = e.target.closest('[data-style]'); if (!chip) return;
+      if (chip.classList.contains('locked')) {
+        showLockTip(chip);
+        clearTimeout(showLockTip._t);
+        showLockTip._t = setTimeout(hideLockTip, 1600);
+        return;
+      }
       setStyle(chip.dataset.style);
     }));
 
@@ -493,6 +592,10 @@
       document.getElementById('bgrm').classList.remove('working');
       document.body.classList.remove('no-photo');
       document.body.classList.add('has-photo');   // step 1 → step 2 on mobile
+      // a fresh photo means bg has NOT been removed yet — re-lock the violet chips
+      bgRemoved = false;
+      if (LOCKED_STYLES.has(activeStyle)) setStyle('ring-soft');
+      updateChipLocks();
       render();
     };
     img.src = URL.createObjectURL(file);
@@ -506,7 +609,9 @@
       const img = new Image();
       img.onload = () => {
         photo = img;
-        // re-fit but keep current zoom/pan so the user doesn't lose framing
+        // bg removal just succeeded → unlock the violet-* chips
+        bgRemoved = true;
+        updateChipLocks();
         render();
       };
       img.src = URL.createObjectURL(blob);
