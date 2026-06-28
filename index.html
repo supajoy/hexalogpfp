@@ -303,6 +303,17 @@
       border: 1.5px solid var(--violet); color: #fff; font-weight: 600; font-size: 14px;
       border-radius: 13px; background: rgba(127,71,251,.16); cursor: pointer;
     }
+    .mbgrm {
+      width: 100%; height: 46px; margin-top: -2px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid var(--line); background: var(--panel-2); color: var(--offwhite);
+      border-radius: 12px; font-size: 13px; font-weight: 500; cursor: pointer;
+    }
+    .mbgrm:disabled { opacity: .55; }
+    .mbgrm svg { width: 14px; height: 14px; color: var(--lav); }
+    .mbgrm.working { color: var(--yellow); border-color: var(--yellow); }
+    .mbgrm.working svg { color: var(--yellow); animation: bgrmSpin 1.2s linear infinite; }
+    body.no-photo .mbgrm { display: none; }
     .mtools { display: flex; justify-content: center; gap: 24px; }
     .mtools button {
       height: auto; padding: 4px; border: none; background: none; border-radius: 0;
@@ -413,6 +424,10 @@
     <div class="mchip" data-style="violet-tag"><img src="frames/violet-back-flat.png" alt="violet tag frame"><img class="acc" src="frames/violet-tag-acc.png" alt=""></div>
     <div class="mchip" data-style="violet-tag-soft"><img src="frames/violet-back-flat.png" alt="violet soft tag frame"><img class="acc" src="frames/violet-tag-soft-acc.png" alt=""></div>
   </div>
+  <button type="button" class="mbgrm" id="mbgrm" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+    <span id="mbgrmLabel">remove background</span>
+  </button>
   <button class="mdownload" id="mdownload">download png</button>
   <div class="mtools">
     <button id="mchange">↻ change photo</button>
@@ -587,9 +602,16 @@
       downloadBtn.disabled = false;
       document.getElementById('filebtn').classList.remove('pulse');
       document.getElementById('filebtnLabel').textContent = 'change image';
-      document.getElementById('bgrm').disabled = false;
-      document.getElementById('bgrmLabel').textContent = 'remove background';
-      document.getElementById('bgrm').classList.remove('working');
+      ['bgrm', 'mbgrm'].forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = false;
+        b.classList.remove('working');
+      });
+      ['bgrmLabel', 'mbgrmLabel'].forEach(id => {
+        const l = document.getElementById(id);
+        if (l) l.textContent = 'remove background';
+      });
       document.body.classList.remove('no-photo');
       document.body.classList.add('has-photo');   // step 1 → step 2 on mobile
       // a fresh photo means bg has NOT been removed yet — re-lock the violet chips
@@ -740,8 +762,13 @@
 </script>
 
 <script type="module">
-  const btn = document.getElementById('bgrm');
-  const label = document.getElementById('bgrmLabel');
+  // desktop sidebar button + mobile bottom-bar button — both drive the same flow
+  const btns   = [document.getElementById('bgrm'),       document.getElementById('mbgrm')].filter(Boolean);
+  const labels = [document.getElementById('bgrmLabel'),  document.getElementById('mbgrmLabel')].filter(Boolean);
+  const setLabel    = (text) => labels.forEach(l => l.textContent = text);
+  const setDisabled = (v)    => btns.forEach(b => b.disabled = v);
+  const setWorking  = (v)    => btns.forEach(b => b.classList.toggle('working', v));
+
   let removeBackground = null;
   let loadingLib = null;
   const LIB_URL = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm';
@@ -752,26 +779,27 @@
     return loadingLib;
   }
 
-  btn.addEventListener('click', async () => {
+  async function runBgRemove() {
     if (!window.__hexalog?.hasPhoto()) return;
-    btn.disabled = true;
-    btn.classList.add('working');
-    label.textContent = 'loading model…';
+    setDisabled(true);
+    setWorking(true);
+    setLabel('loading model…');
     try {
       await loadLib();
       const src = window.__hexalog.getPhotoBlobURL();
-      label.textContent = 'removing background…';
+      setLabel('removing background…');
       const blob = await removeBackground(src, { output: { format: 'image/png', quality: 0.95 } });
       window.__hexalog.setPhotoFromBlob(blob);
-      label.textContent = 'background removed';
-      setTimeout(() => { label.textContent = 'remove background'; btn.disabled = false; btn.classList.remove('working'); }, 1600);
+      setLabel('background removed');
+      setTimeout(() => { setLabel('remove background'); setDisabled(false); setWorking(false); }, 1600);
     } catch (e) {
       console.error('bg-remove failed:', e);
-      label.textContent = 'failed — try again';
-      btn.classList.remove('working');
-      setTimeout(() => { label.textContent = 'remove background'; btn.disabled = false; }, 2000);
+      setLabel('failed — try again');
+      setWorking(false);
+      setTimeout(() => { setLabel('remove background'); setDisabled(false); }, 2000);
     }
-  });
+  }
+  btns.forEach(b => b.addEventListener('click', runBgRemove));
 </script>
 </body>
 </html>
